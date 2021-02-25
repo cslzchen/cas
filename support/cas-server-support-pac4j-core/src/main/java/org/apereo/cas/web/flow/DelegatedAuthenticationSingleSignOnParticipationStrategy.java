@@ -1,12 +1,12 @@
-package org.apereo.cas.web.flow.authentication;
+package org.apereo.cas.web.flow;
 
 import org.apereo.cas.authentication.AuthenticationCredentialsThreadLocalBinder;
-import org.apereo.cas.authentication.AuthenticationHandler;
 import org.apereo.cas.authentication.AuthenticationServiceSelectionPlan;
+import org.apereo.cas.authentication.principal.ClientCredential;
 import org.apereo.cas.services.RegisteredService;
 import org.apereo.cas.services.ServicesManager;
 import org.apereo.cas.ticket.registry.TicketRegistrySupport;
-import org.apereo.cas.web.flow.SingleSignOnParticipationStrategy;
+import org.apereo.cas.util.CollectionUtils;
 import org.apereo.cas.web.support.WebUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -16,16 +16,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.webflow.execution.RequestContext;
 
 /**
- * This is {@link RequiredAuthenticationHandlersSingleSignOnParticipationStrategy}.
+ * This is {@link DelegatedAuthenticationSingleSignOnParticipationStrategy}.
  *
  * @author Misagh Moayyed
- * @since 6.2.0
+ * @since 6.3.0
  */
 @RequiredArgsConstructor
 @Slf4j
-public class RequiredAuthenticationHandlersSingleSignOnParticipationStrategy
-    implements SingleSignOnParticipationStrategy {
-
+public class DelegatedAuthenticationSingleSignOnParticipationStrategy implements SingleSignOnParticipationStrategy {
     private final ServicesManager servicesManager;
 
     private final AuthenticationServiceSelectionPlan serviceSelectionStrategy;
@@ -38,8 +36,8 @@ public class RequiredAuthenticationHandlersSingleSignOnParticipationStrategy
         if (registeredService == null) {
             return true;
         }
-        val authenticationPolicy = registeredService.getAuthenticationPolicy();
-        if (authenticationPolicy == null || authenticationPolicy.getRequiredAuthenticationHandlers().isEmpty()) {
+        val accessStrategy = registeredService.getAccessStrategy();
+        if (accessStrategy == null || accessStrategy.getDelegatedAuthenticationPolicy() == null) {
             return true;
         }
 
@@ -47,20 +45,27 @@ public class RequiredAuthenticationHandlersSingleSignOnParticipationStrategy
         if (StringUtils.isBlank(ticketGrantingTicketId)) {
             return true;
         }
-        val authentication = ticketRegistrySupport.getAuthenticationFrom(ticketGrantingTicketId);
         val ca = AuthenticationCredentialsThreadLocalBinder.getCurrentAuthentication();
         try {
+            val authentication = ticketRegistrySupport.getAuthenticationFrom(ticketGrantingTicketId);
             AuthenticationCredentialsThreadLocalBinder.bindCurrent(authentication);
-            val handlers = authentication.getAttributes().get(AuthenticationHandler.SUCCESSFUL_AUTHENTICATION_HANDLERS);
-            if (!handlers.containsAll(authenticationPolicy.getRequiredAuthenticationHandlers())) {
-                LOGGER.warn("Authentication context has not been established using required handlers [{}]",
-                    authenticationPolicy.getRequiredAuthenticationHandlers());
+            val policy = accessStrategy.getDelegatedAuthenticationPolicy();
+            val attributes = authentication.getAttributes();
+            if (attributes.containsKey(ClientCredential.AUTHENTICATION_ATTRIBUTE_CLIENT_NAME)) {
+                val clientNameAttr = attributes.get(ClientCredential.AUTHENTICATION_ATTRIBUTE_CLIENT_NAME);
+                val value = CollectionUtils.firstElement(clientNameAttr);
+                if (value.isPresent()) {
+                    val client = value.get().toString();
+                    LOGGER.debug("Evaluating delegated access strategy for client [{}] and service [{}]",
+                        client, registeredService);
+                    return policy.isProviderAllowed(client, registeredService);
+                }
                 return false;
             }
+            return !policy.isProviderRequired();
         } finally {
             AuthenticationCredentialsThreadLocalBinder.bindCurrent(ca);
         }
-        return true;
     }
 
     @Override
@@ -69,8 +74,8 @@ public class RequiredAuthenticationHandlersSingleSignOnParticipationStrategy
         if (registeredService == null) {
             return false;
         }
-        val authenticationPolicy = registeredService.getAuthenticationPolicy();
-        if (authenticationPolicy == null || authenticationPolicy.getRequiredAuthenticationHandlers().isEmpty()) {
+        val accessStrategy = registeredService.getAccessStrategy();
+        if (accessStrategy == null || accessStrategy.getDelegatedAuthenticationPolicy() == null) {
             return false;
         }
         return true;

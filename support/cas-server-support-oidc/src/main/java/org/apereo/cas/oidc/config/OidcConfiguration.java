@@ -2,6 +2,7 @@ package org.apereo.cas.oidc.config;
 
 import org.apereo.cas.CentralAuthenticationService;
 import org.apereo.cas.audit.AuditableExecution;
+import org.apereo.cas.authentication.AuthenticationEventExecutionPlan;
 import org.apereo.cas.authentication.AuthenticationServiceSelectionPlan;
 import org.apereo.cas.authentication.AuthenticationServiceSelectionStrategy;
 import org.apereo.cas.authentication.AuthenticationSystemSupport;
@@ -232,6 +233,10 @@ public class OidcConfiguration implements WebMvcConfigurer {
     private ObjectProvider<OAuth20CasAuthenticationBuilder> authenticationBuilder;
 
     @Autowired
+    @Qualifier("authenticationEventExecutionPlan")
+    private ObjectProvider<AuthenticationEventExecutionPlan> authenticationEventExecutionPlan;
+
+    @Autowired
     @Qualifier("warnCookieGenerator")
     private ObjectProvider<CasCookieBuilder> warnCookieGenerator;
 
@@ -330,6 +335,10 @@ public class OidcConfiguration implements WebMvcConfigurer {
     @Autowired
     @Qualifier("authenticationServiceSelectionPlan")
     private ObjectProvider<AuthenticationServiceSelectionPlan> authenticationServiceSelectionPlan;
+
+    @Autowired
+    @Qualifier("oauthDistributedSessionCookieGenerator")
+    private ObjectProvider<CasCookieBuilder> oauthDistributedSessionCookieGenerator;
 
     @Override
     public void addInterceptors(final InterceptorRegistry registry) {
@@ -578,6 +587,7 @@ public class OidcConfiguration implements WebMvcConfigurer {
             .casProperties(casProperties)
             .ticketRegistry(ticketRegistry.getObject())
             .applicationContext(applicationContext)
+            .authenticationEventExecutionPlan(authenticationEventExecutionPlan.getObject())
             .build();
 
         val r = new DefaultMultifactorAuthenticationProviderWebflowEventResolver(context, oidcMultifactorAuthenticationTrigger());
@@ -839,6 +849,7 @@ public class OidcConfiguration implements WebMvcConfigurer {
             .casProperties(casProperties)
             .ticketGrantingTicketCookieGenerator(ticketGrantingTicketCookieGenerator.getObject())
             .resourceLoader(resourceLoader)
+            .oauthDistributedSessionCookieGenerator(oauthDistributedSessionCookieGenerator.getObject())
             .oauthConfig(oauthSecConfig.getObject())
             .registeredServiceAccessStrategyEnforcer(registeredServiceAccessStrategyEnforcer.getObject())
             .centralAuthenticationService(centralAuthenticationService.getObject())
